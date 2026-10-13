@@ -10,7 +10,7 @@ export default function extension() {
 }
 
 const APP_URL =
-  'https://atomic-circle-mono-full.trycloudflare.com';
+  'https://international-shipping-info.onrender.com';
 
 function getGap(spacing) {
   if (spacing === 'compact') {
