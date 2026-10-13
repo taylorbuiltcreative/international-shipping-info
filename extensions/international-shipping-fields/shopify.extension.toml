@@ -1,0 +1,24 @@
+# Learn more about configuring UI extensions:
+# https://shopify.dev/docs/api/checkout-ui-extensions/latest/configuration
+
+api_version = "2026-07"
+
+[[extensions]]
+name = "international-shipping-fields"
+handle = "international-shipping-fields"
+type = "ui_extension"
+uid = "cfba82ec-4e05-59f1-9821-3a87c1d415d201c6ff70"
+
+# Thank You page
+[[extensions.targeting]]
+module = "./src/ThankYou.jsx"
+target = "purchase.thank-you.block.render"
+
+# Order Status page
+[[extensions.targeting]]
+module = "./src/OrderStatus.jsx"
+target = "customer-account.order-status.block.render"
+
+[extensions.capabilities]
+api_access = true
+network_access = true

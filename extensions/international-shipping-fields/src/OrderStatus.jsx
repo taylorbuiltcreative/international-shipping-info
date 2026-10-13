@@ -1,0 +1,494 @@
+import '@shopify/ui-extensions/preact';
+import {render} from 'preact';
+import {
+  useEffect,
+  useState,
+} from 'preact/hooks';
+
+export default function extension() {
+  render(<Extension />, document.body);
+}
+
+const APP_URL =
+  'https://atomic-circle-mono-full.trycloudflare.com';
+
+function getGap(spacing) {
+  if (spacing === 'compact') {
+    return 'small';
+  }
+
+  if (spacing === 'spacious') {
+    return 'large';
+  }
+
+  return 'base';
+}
+
+function getPadding(spacing) {
+  if (spacing === 'compact') {
+    return 'small';
+  }
+
+  if (spacing === 'spacious') {
+    return 'large';
+  }
+
+  return 'base';
+}
+
+function Extension() {
+  const shippingAddress =
+    shopify.shippingAddress?.value;
+
+  const countryCode =
+    shippingAddress?.countryCode;
+
+  const order =
+    shopify.order?.value;
+
+  const confirmationNumber =
+    order?.confirmationNumber;
+
+  const [countryConfig, setCountryConfig] =
+    useState(null);
+
+  const [values, setValues] =
+    useState({});
+
+  const [existingValues, setExistingValues] =
+    useState({});
+
+  const [status, setStatus] =
+    useState('');
+
+  const [isLoading, setIsLoading] =
+    useState(true);
+
+  const [isSubmitting, setIsSubmitting] =
+    useState(false);
+
+  const [isComplete, setIsComplete] =
+    useState(false);
+
+  useEffect(() => {
+    loadPage();
+  }, [countryCode, confirmationNumber]);
+
+  async function loadPage() {
+    if (
+      !countryCode ||
+      !confirmationNumber
+    ) {
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      const token =
+        await shopify.sessionToken.get();
+
+      /*
+       * Load our country/field configuration.
+       */
+      const configResponse = await fetch(
+        `${APP_URL}/api/order-status-config`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      const configData =
+        await configResponse.json();
+
+      if (
+        !configResponse.ok ||
+        !configData.success
+      ) {
+        console.error(
+          'Unable to load shipping configuration:',
+          configData
+        );
+
+        return;
+      }
+
+      const match =
+        configData.config.find(
+          (country) =>
+            country.enabled &&
+            country.countryCode?.toUpperCase() ===
+              countryCode?.toUpperCase()
+        );
+
+      /*
+       * Nothing configured for this country.
+       */
+      if (!match) {
+        setCountryConfig(null);
+        return;
+      }
+
+      setCountryConfig(match);
+
+      /*
+       * Now load any values already saved
+       * on this Shopify order.
+       */
+      const stateResponse = await fetch(
+        `${APP_URL}/api/order-status-state?confirmationNumber=${encodeURIComponent(
+          confirmationNumber
+        )}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      const stateData =
+        await stateResponse.json();
+
+      if (
+        !stateResponse.ok ||
+        !stateData.success
+      ) {
+        console.error(
+          'Unable to load existing shipping information:',
+          stateData
+        );
+
+        return;
+      }
+
+      const savedFields =
+        stateData.fields || {};
+
+      setExistingValues(savedFields);
+
+      /*
+       * Pre-fill any existing values.
+       */
+      const initialValues = {};
+
+      match.fields.forEach((field) => {
+        initialValues[field.key] =
+          savedFields[field.key] || '';
+      });
+
+      setValues(initialValues);
+
+      /*
+       * Determine whether every required
+       * field already has a saved value.
+       */
+      const requiredFields =
+        match.fields.filter(
+          (field) => field.required
+        );
+
+      const allRequiredComplete =
+        requiredFields.length > 0 &&
+        requiredFields.every(
+          (field) =>
+            savedFields[field.key] &&
+            savedFields[
+              field.key
+            ].trim() !== ''
+        );
+
+      setIsComplete(
+        allRequiredComplete
+      );
+    } catch (error) {
+      console.error(
+        'Order status loading error:',
+        error
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  function updateValue(key, value) {
+    setValues((current) => ({
+      ...current,
+      [key]: value,
+    }));
+  }
+
+  async function handleSubmit() {
+    if (!countryConfig) {
+      return;
+    }
+
+    /*
+     * Validate required fields.
+     */
+    for (
+      const field
+      of countryConfig.fields
+    ) {
+      if (
+        field.required &&
+        !values[field.key]?.trim()
+      ) {
+        setStatus(
+          `Please enter ${field.label}.`
+        );
+
+        return;
+      }
+    }
+
+    if (!confirmationNumber) {
+      setStatus(
+        'Unable to identify this order.'
+      );
+
+      return;
+    }
+
+    setIsSubmitting(true);
+    setStatus('');
+
+    try {
+      const token =
+        await shopify.sessionToken.get();
+
+      const fields = {};
+
+      countryConfig.fields.forEach(
+        (field) => {
+          const value =
+            values[field.key]?.trim();
+
+          if (value) {
+            fields[field.key] =
+              value;
+          }
+        }
+      );
+
+      const response = await fetch(
+        `${APP_URL}/api/order-status-shipping-info`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type':
+              'application/json',
+
+            Authorization:
+              `Bearer ${token}`,
+          },
+
+          body: JSON.stringify({
+            confirmationNumber,
+            fields,
+          }),
+        }
+      );
+
+      const data =
+        await response.json();
+
+      if (
+        !response.ok ||
+        !data.success
+      ) {
+        console.error(
+          'Shipping info save failed:',
+          data
+        );
+
+        setStatus(
+          data?.error ||
+            data?.errors?.[0]?.message ||
+            'Unable to save your shipping information. Please try again.'
+        );
+
+        return;
+      }
+
+      /*
+       * Submission succeeded.
+       */
+      setExistingValues(fields);
+      setIsComplete(true);
+      setStatus('');
+    } catch (error) {
+      console.error(
+        'Shipping info submission error:',
+        error
+      );
+
+      setStatus(
+        'Unable to save your shipping information. Please try again.'
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  if (isLoading) {
+    return null;
+  }
+
+  /*
+   * Country doesn't require anything.
+   */
+  if (!countryConfig) {
+    return null;
+  }
+
+  /*
+   * Required information has already
+   * been submitted.
+   */
+  if (isComplete) {
+    return (
+      <s-banner
+        heading={
+          countryConfig.successHeading ||
+          'Shipping Information Received'
+        }
+        tone="success"
+      >
+        <s-text>
+          {countryConfig.successMessage ||
+            `We have received the additional information required to process your shipment to ${countryConfig.countryName}.`}
+        </s-text>
+      </s-banner>
+    );
+  }
+
+  /*
+   * Main form content.
+   */
+  const formContent = (
+    <s-stack
+      gap={getGap(
+        countryConfig.spacing
+      )}
+    >
+      <s-heading>
+        {countryConfig.blockHeading ||
+          'Action Required: Additional Shipping Information'}
+      </s-heading>
+
+      <s-text>
+        {countryConfig.blockMessage ||
+          `Your order cannot be processed for shipment to ${countryConfig.countryName} until the information below is submitted.`}
+      </s-text>
+
+      {countryConfig.showDivider !==
+      false ? (
+        <s-divider />
+      ) : null}
+
+      {countryConfig.fields.map(
+        (field) => (
+          <s-stack
+            key={field.key}
+            gap="small"
+          >
+            <s-text-field
+              label={field.label}
+              placeholder={
+                field.placeholder ||
+                ''
+              }
+              value={
+                values[field.key] ||
+                ''
+              }
+              required={
+                field.required
+              }
+              onInput={(event) =>
+                updateValue(
+                  field.key,
+                  event.currentTarget
+                    .value
+                )
+              }
+            />
+
+            {field.helpText ? (
+              <s-text>
+                {field.helpText}
+              </s-text>
+            ) : null}
+          </s-stack>
+        )
+      )}
+
+      <s-button
+        variant={
+          countryConfig.buttonStyle ===
+          'secondary'
+            ? 'secondary'
+            : 'primary'
+        }
+        loading={isSubmitting}
+        onClick={handleSubmit}
+      >
+        {countryConfig.buttonLabel ||
+          'Submit Required Information'}
+      </s-button>
+
+      {status ? (
+        <s-text>
+          {status}
+        </s-text>
+      ) : null}
+    </s-stack>
+  );
+
+  /*
+   * Plain display style.
+   */
+  if (
+    countryConfig.displayStyle ===
+    'plain'
+  ) {
+    return formContent;
+  }
+
+  /*
+   * Card display style.
+   */
+  if (
+    countryConfig.displayStyle ===
+    'card'
+  ) {
+    return (
+      <s-box
+        padding={getPadding(
+          countryConfig.spacing
+        )}
+        background="subdued"
+        border="base"
+        borderRadius="base"
+      >
+        {formContent}
+      </s-box>
+    );
+  }
+
+  /*
+   * Banner display style.
+   * This is also the default.
+   */
+  return (
+    <s-banner
+      tone={
+        countryConfig.bannerTone ||
+        'warning'
+      }
+    >
+      {formContent}
+    </s-banner>
+  );
+}
