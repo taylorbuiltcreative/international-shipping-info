@@ -2,6 +2,19 @@ import { authenticate } from "../shopify.server";
 import db from "../db.server";
 
 export const loader = async ({ request }) => {
+  // Handle CORS preflight before Shopify authentication
+  if (request.method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers": "Authorization, Content-Type",
+        "Access-Control-Max-Age": "7200",
+      },
+    });
+  }
+
   try {
     const { cors, sessionToken } =
       await authenticate.public.customerAccount(request);
@@ -43,6 +56,8 @@ export const loader = async ({ request }) => {
         headers: {
           "Content-Type": "application/json",
           "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, OPTIONS",
+          "Access-Control-Allow-Headers": "Authorization, Content-Type",
         },
       }
     );

@@ -1,7 +1,26 @@
-import { authenticate, unauthenticated } from "../shopify.server";
+import {
+  authenticate,
+  unauthenticated,
+} from "../shopify.server";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Authorization, Content-Type",
+  "Access-Control-Max-Age": "7200",
+};
 
 export const loader = async ({ request }) => {
-  const { cors } = await authenticate.public.checkout(request);
+  // Handle CORS preflight before Shopify authentication
+  if (request.method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: corsHeaders,
+    });
+  }
+
+  const { cors } =
+    await authenticate.public.checkout(request);
 
   return cors(
     new Response(null, {
@@ -11,13 +30,22 @@ export const loader = async ({ request }) => {
 };
 
 export const action = async ({ request }) => {
+  // Handle CORS preflight before Shopify authentication
+  if (request.method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: corsHeaders,
+    });
+  }
+
   try {
     const { cors, sessionToken } =
       await authenticate.public.checkout(request);
 
     const shop = sessionToken.dest;
 
-    const { admin } = await unauthenticated.admin(shop);
+    const { admin } =
+      await unauthenticated.admin(shop);
 
     const body = await request.json();
 
@@ -111,14 +139,14 @@ export const action = async ({ request }) => {
     /*
      * Convert submitted fields into order metafields.
      */
-const metafields = Object.entries(fields).map(
-  ([key, value]) => ({
-    namespace: "custom",
-    key,
-    type: "single_line_text_field",
-    value: String(value),
-  })
-);
+    const metafields = Object.entries(fields).map(
+      ([key, value]) => ({
+        namespace: "custom",
+        key,
+        type: "single_line_text_field",
+        value: String(value),
+      })
+    );
 
     /*
      * Save the shipping information to the order.
@@ -202,7 +230,7 @@ const metafields = Object.entries(fields).map(
         status: 500,
         headers: {
           "Content-Type": "application/json",
-          "Access-Control-Allow-Origin": "*",
+          ...corsHeaders,
         },
       }
     );

@@ -3,7 +3,22 @@ import {
   unauthenticated,
 } from "../shopify.server";
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Authorization, Content-Type",
+  "Access-Control-Max-Age": "7200",
+};
+
 export const loader = async ({ request }) => {
+  // Handle CORS preflight before Shopify authentication
+  if (request.method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: corsHeaders,
+    });
+  }
+
   const { cors } =
     await authenticate.public.customerAccount(request);
 
@@ -15,6 +30,14 @@ export const loader = async ({ request }) => {
 };
 
 export const action = async ({ request }) => {
+  // Handle CORS preflight before Shopify authentication
+  if (request.method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: corsHeaders,
+    });
+  }
+
   try {
     const { cors, sessionToken } =
       await authenticate.public.customerAccount(request);
@@ -163,7 +186,7 @@ export const action = async ({ request }) => {
         status: 500,
         headers: {
           "Content-Type": "application/json",
-          "Access-Control-Allow-Origin": "*",
+          ...corsHeaders,
         },
       }
     );
